@@ -8,7 +8,7 @@ Este repositorio centraliza toda la documentación arquitectónica, los diagrama
 * `tarifa_service`
 
 Cada microservicio tiene su propio repositorio y código fuente.
-Este cuarto repo **no contiene código**, sino que funciona como el _hub documental del proyecto_.
+Este repo **no contiene código**, sino que funciona como el _hub documental del proyecto_.
 
 ## Arquitectura general
 El sistema está diseñado siguiendo un enfoque de **microservicios desacoplados**, donde cada uno se encarga de una parte crítica del dominio:
@@ -24,9 +24,22 @@ Cada servicio expone APIs REST y se comunica con los demás mediante llamadas HT
 ## Justificacion del diseño en microservicios
 
 1. Mejorar el desarrollo en equipo
+   - Esta division facilito el reparto de responsabilidades entre el grupo.
+   - Logra evitar bloqueos en los demas servicios, conflictos y un facil versionado.
+     
 2. Bajo acoplamiento y alta cohesion
+   - Cada servicio cumple una única responsabilidad clara: viajes, pausas o tarifas.
+   - Esto simplifica la lógica, el testing y el mantenimiento.
+   
 3. Independencia tecnologica y de despliegue
+   - Cada microservicio puede:
+       * deployearse por separado
+       * escalar según su carga
+       * evolucionar sin impactar a los otros
+   
 4. Robustez del sistema
+   - Si un sistema falla o cae, el resto puede seguir funcionando.
+   - El sistema se vuelva mas tolerante al fallo.
 
 ## Repositorios del proyecto
 | Servicio                | Repositorio                                                                                  |
@@ -71,6 +84,8 @@ classDef connector stroke-dasharray: 5 5;
     V2 -->|Envía km y pausas| T1
     T1 -->|Retorna costo final| V2
 ```
+* Este diagrama muestra qué hace cada microservicio dentro del ecosistema.
+Resume la responsabilidad individual de cada MS y muestra cómo viaje_service actúa como orquestador, consultando a los otros dos para poder finalizar correctamente un viaje.
 
 - Diagrama C4 - Arquitectura distribuida
 
@@ -114,29 +129,102 @@ viaje -.->|REST: ubicación| monopatin
 - Diagrama de clases del dominio
 ``` mermaid
 classDiagram
+    %% ============================
+    %% ENTIDADES
+    %% ============================
     class Viaje {
-      Long id
-      LocalDate inicio
-      LocalDate fin
-      Long monopatinId
-      double kilometros
-      double costo
+        +Long id
+        +LocalDateTime inicio
+        +LocalDateTime fin
+        +Long monopatinId
+        +Double kilometros
+        +Double costo
+        +List<Long> pausas
+        +getters()
+        +setters()
     }
 
     class Pausa {
-      Long id
-      Long viajeId
-      LocalDateTime inicio
-      LocalDateTime fin
+        +Long id
+        +LocalDateTime inicio
+        +LocalDateTime fin
+        +Long viajeId
+        +getters()
+        +setters()
     }
 
     class Tarifa {
-      Long id
-      String tipo
-      double montoBase
-      double precioKM
-      double precioMinPausa
+        +Long id
+        +TipoTarifa tipo
+        +Double valorKm
+        +getters()
+        +setters()
     }
+
+    class TipoTarifa {
+        +BASICA
+        +EXTRA
+    }
+
+    Viaje "1" --> "0..*" Pausa : tiene >
+    Viaje "1" --> "1" Tarifa : usa >
+
+    Tarifa "1" --> "1" TipoTarifa : es_de >
+
+    %% ============================
+    %% SERVICIOS
+    %% ============================
+    class ViajeService {
+	    -ViajeRepository repository;
+	    -MonopatinClient monopatinClient;
+	    -TarifaClient tarifaClient;
+	    -PausaClient pausaClient;
+	    -DistanciaService distanciaService;
+        +iniciarViaje(Long monopatinId): ViajeResponseDTO
+        +finalizarViaje(Long viajeId): ViajeResponseDTO
+    }
+
+    class PausaService {
+        -PausaRepository repository;
+        +getMinutosPausaByViaje(Long viajeId): PausaTotalDTO
+        +getPausasByViaje(Long viajeId): List<PausaResponseDTO>
+        +iniciarPausa(Long viajeId): PausaResponseDTO
+        +finalizarPausa(Long idPausa): PausaResponseDTO
+    }
+
+    class TarifaService {
+        -TarifaRepository repository;
+        +obtenerTarifa(String tipoTarifa): TarifaResponseDTO
+        +calcularCosto(CostoRequestDTO dto): CostoResponseDTO
+    }
+
+    ViajeService --> Viaje : gestiona >
+    ViajeService --> PausaService : consulta >
+    ViajeService --> TarifaService : usa >
+
+    PausaService --> Pausa : gestiona >
+    TarifaService --> Tarifa : gestiona >
+
+    %% ============================
+    %% REPOSITORIOS
+    %% ============================
+    class ViajeRepository {
+        +save()
+        +findById()
+    }
+
+    class PausaRepository {
+        +save()
+        +findByViajeId()
+    }
+
+    class TarifaRepository {
+        +findByTipo()
+    }
+
+    ViajeService --> ViajeRepository
+    PausaService --> PausaRepository
+    TarifaService --> TarifaRepository
 ```
 
 ## Colaboradores
